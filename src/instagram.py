@@ -91,6 +91,9 @@ def _download_image(url: str, path: str) -> bool:
 
 # ── 메인 함수 ─────────────────────────────────────────────────────
 
+MAX_POSTS = 5  # 1회 실행당 최대 수집 게시물 수
+
+
 def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], list[str]]:
     """
     Instagram @evonikpc 게시물 수집
@@ -111,7 +114,9 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], list[st
 
         print("   Instagram 접속 중...")
         page.goto("https://www.instagram.com/evonikpc/", wait_until="domcontentloaded")
-        page.wait_for_timeout(8000)
+        page.wait_for_timeout(5000)
+        _save_debug(page, "insta_loaded")
+        print(f"   현재 URL: {page.url}")
 
         # 로그인 확인
         if "login" in page.url:
@@ -121,36 +126,33 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], list[st
                 "Instagram 세션 만료. scripts/save_sessions.py를 로컬에서 실행하여 세션을 갱신하세요."
             )
 
-        # 팝업 닫기 (알림 허용 등)
-        try:
-            page.locator("button:has-text('나중에')").first.click(timeout=3000)
-        except Exception:
-            pass
-        try:
-            page.locator("button:has-text('닫기')").first.click(timeout=2000)
-        except Exception:
-            pass
+        # 팝업 닫기
+        for btn_text in ["나중에", "닫기", "Not Now"]:
+            try:
+                page.locator(f"button:has-text('{btn_text}')").first.click(timeout=2000)
+            except Exception:
+                pass
 
-        page.wait_for_timeout(3000)
+        page.wait_for_timeout(2000)
 
-        # 게시물 목록 수집
-        posts = page.locator("div._aagw").all()
-        print(f"   게시물 {len(posts)}개 발견")
+        # 게시물 목록 (최대 MAX_POSTS개만 확인)
+        posts = page.locator("div._aagw").all()[:MAX_POSTS]
+        print(f"   게시물 확인: {len(posts)}개 (최대 {MAX_POSTS}개)")
 
         for i, post in enumerate(posts):
             try:
                 post.scroll_into_view_if_needed()
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(1000)
                 post.click()
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(2000)
 
                 english_text = _get_caption(page)
                 if not english_text:
                     page.keyboard.press("Escape")
-                    page.wait_for_timeout(1000)
+                    page.wait_for_timeout(500)
                     continue
 
-                # 중복 체크 → 이전에 수집한 게시물이면 중단
+                # 중복 체크
                 if english_text[30:100] in whole:
                     print(f"   ✅ 게시물 {i+1}: 중복 발견 → 수집 중단")
                     page.keyboard.press("Escape")
@@ -158,7 +160,7 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], list[st
 
                 # 번역 클릭
                 if _click_translate(page):
-                    korean_text = _wait_for_translation(page, english_text)
+                    korean_text = _wait_for_translation(page, english_text, timeout=10)
                 else:
                     korean_text = english_text
 
@@ -167,12 +169,12 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], list[st
 
                 print(f"\n{'='*55}")
                 print(f"   게시물 {i+1} 수집 완료")
-                print(f"   🇺🇸 영문 (앞 150자): {english_text[:150]}")
-                print(f"   🇰🇷 한글 (앞 150자): {korean_text[:150]}")
+                print(f"   🇺🇸 영문 (앞 100자): {english_text[:100]}")
+                print(f"   🇰🇷 한글 (앞 100자): {korean_text[:100]}")
                 print(f"{'='*55}")
 
                 page.keyboard.press("Escape")
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(1000)
 
             except Exception as e:
                 print(f"   ⚠️ 게시물 {i+1} 수집 오류: {e}")
@@ -183,7 +185,7 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], list[st
                     pass
                 continue
 
-        # 이미지 다운로드 (신규 게시물 수만큼)
+        # 이미지 다운로드
         if english_texts:
             print(f"\n   이미지 다운로드 중...")
             img_elements = page.locator("div._aagv img").all()
