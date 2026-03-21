@@ -150,8 +150,8 @@ def _clean_text(text: str) -> str:
 
 def upload_post(page: Page, title: str, body: str, img_path: str) -> None:
     """소식(Posts) 임시저장"""
-    page.goto(KAKAO_POST_URL, wait_until="networkidle", timeout=30000)
-    page.wait_for_timeout(3000)
+    page.goto(KAKAO_POST_URL, wait_until="domcontentloaded", timeout=30000)
+    page.wait_for_timeout(5000)
     _save_debug(page, "post_page_loaded")
     print(f"   현재 URL: {page.url}")
 
