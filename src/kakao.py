@@ -230,53 +230,57 @@ def upload_message(page: Page, message: str, img_path: str) -> None:
     page.goto(KAKAO_MSG_URL, wait_until="domcontentloaded")
     page.wait_for_timeout(5000)
 
-    # 이미지 업로드 라디오 선택 (라벨 클릭 → React 상태 반영)
+    # 이미지 업로드 라디오 선택
+    image_selected = False
+    # 방법 1: 라디오 버튼 JS 클릭
     try:
-        label = page.locator('label:has-text("이미지 업로드")').first
-        label.wait_for(state="visible", timeout=5000)
-        label.click()
-        print("   ✅ 이미지 타입 선택 (라벨 클릭)")
+        radio = page.locator('input[value="image"], input[id*="media.type"]').first
+        page.evaluate("""el => {
+            el.checked = true;
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+            el.dispatchEvent(new Event('click', {bubbles: true}));
+        }""", radio.element_handle())
+        image_selected = True
+        print("   ✅ 이미지 타입 선택 (라디오 JS)")
     except Exception:
+        pass
+
+    # 방법 2: 라벨 클릭
+    if not image_selected:
         try:
-            page.locator('label:has-text("이미지")').first.click()
-            print("   ✅ 이미지 타입 선택 (이미지 라벨)")
+            page.locator('label:has-text("이미지 업로드"), label[for*="media.type"]').first.click(timeout=3000)
+            image_selected = True
+            print("   ✅ 이미지 타입 선택 (라벨)")
         except Exception:
-            print("   ⚠️ 이미지 타입 라디오 선택 실패")
+            print("   ⚠️ 이미지 타입 선택 실패")
 
     page.wait_for_timeout(2000)
 
-    # 이미지 업로드 영역으로 스크롤 후 파일 업로드
-    # 방법 1: expect_file_chooser로 업로드 버튼 클릭 가로채기
+    # 이미지 업로드
+    # 방법 1: disabled 아닌 file input에 직접 주입 (원본 kakao_agent.py 방식)
     uploaded = False
-    upload_btn_selectors = [
-        'button:has-text("파일 선택")',
-        'button:has-text("업로드")',
-        'label:has-text("파일 선택")',
-        'label:has-text("업로드")',
-        '[class*="upload"] button',
-        '[class*="upload"] label',
-    ]
-    for sel in upload_btn_selectors:
+    for sel in ['input.custom.uploadInput', 'input.uploadInput', 'input[type="file"][accept*="image"]', 'input[type="file"]']:
         try:
-            btn = page.locator(sel).first
-            btn.scroll_into_view_if_needed(timeout=3000)
-            with page.expect_file_chooser(timeout=5000) as fc_info:
-                btn.click()
-            fc_info.value.set_files(img_path)
-            print(f"   ✅ 파일 업로드 완료 (file_chooser: {sel})")
-            uploaded = True
-            break
+            file_input = page.locator(sel).first
+            file_input.wait_for(state="attached", timeout=3000)
+            is_disabled = page.evaluate("el => el.disabled", file_input.element_handle())
+            if not is_disabled:
+                file_input.set_input_files(img_path)
+                print(f"   ✅ 파일 업로드 완료 (set_input_files: {sel})")
+                uploaded = True
+                break
         except Exception:
             continue
 
-    # 방법 2: file input 직접 주입
+    # 방법 2: "첨부" 버튼 클릭 → expect_file_chooser로 가로채기 (원본의 pyautogui 대체)
     if not uploaded:
         try:
-            file_input = page.locator('input[type="file"]').first
-            file_input.scroll_into_view_if_needed(timeout=3000)
-            page.evaluate("el => { el.removeAttribute('disabled'); el.style.display='block'; }", file_input.element_handle())
-            file_input.set_input_files(img_path)
-            print("   ✅ 파일 업로드 완료 (set_input_files)")
+            attach_btn = page.locator('button:has-text("첨부")').first
+            attach_btn.wait_for(state="visible", timeout=5000)
+            with page.expect_file_chooser(timeout=5000) as fc_info:
+                attach_btn.click()
+            fc_info.value.set_files(img_path)
+            print("   ✅ 파일 업로드 완료 (첨부 버튼 → file_chooser)")
             uploaded = True
         except Exception:
             pass
