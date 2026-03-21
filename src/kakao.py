@@ -230,47 +230,37 @@ def upload_message(page: Page, message: str, img_path: str) -> None:
     page.goto(KAKAO_MSG_URL, wait_until="domcontentloaded")
     page.wait_for_timeout(5000)
 
-    # 이미지 업로드 라디오 선택
-    image_selected = False
-    # 방법 1: 라디오 버튼 JS 클릭
+    # 이미지 업로드 라디오 선택 - 실제 클릭 필요 (React 컴포넌트)
+    # "이미지 업로드" 라벨을 직접 클릭
     try:
-        radio = page.locator('input[value="image"], input[id*="media.type"]').first
-        page.evaluate("""el => {
-            el.checked = true;
-            el.dispatchEvent(new Event('change', {bubbles: true}));
-            el.dispatchEvent(new Event('click', {bubbles: true}));
-        }""", radio.element_handle())
-        image_selected = True
-        print("   ✅ 이미지 타입 선택 (라디오 JS)")
-    except Exception:
-        pass
+        label = page.get_by_text("이미지 업로드", exact=True)
+        label.wait_for(state="visible", timeout=5000)
+        label.click()
+        page.wait_for_timeout(2000)
+        print("   ✅ 이미지 타입 선택")
+    except Exception as e:
+        print(f"   ⚠️ 이미지 타입 선택 실패: {e}")
 
-    # 방법 2: 라벨 클릭
-    if not image_selected:
-        try:
-            page.locator('label:has-text("이미지 업로드"), label[for*="media.type"]').first.click(timeout=3000)
-            image_selected = True
-            print("   ✅ 이미지 타입 선택 (라벨)")
-        except Exception:
-            print("   ⚠️ 이미지 타입 선택 실패")
-
-    page.wait_for_timeout(2000)
     _save_debug(page, "msg_after_radio")
 
-    # 페이지의 file input 상태 출력 (디버그)
+    # 라디오 선택 확인
+    radio_checked = page.evaluate("""() => {
+        const radios = document.querySelectorAll('input[type="radio"]');
+        return Array.from(radios).map(r => ({value: r.value, checked: r.checked, id: r.id}));
+    }""")
+    print(f"   라디오 상태: {radio_checked}")
+
+    # file input 확인
     file_inputs_info = page.evaluate("""() => {
         const inputs = document.querySelectorAll('input[type="file"]');
         return Array.from(inputs).map(el => ({
-            id: el.id,
-            className: el.className,
-            disabled: el.disabled,
-            accept: el.accept,
-            visible: el.offsetParent !== null
+            id: el.id, className: el.className,
+            disabled: el.disabled, accept: el.accept
         }));
     }""")
     print(f"   파일 input 목록: {file_inputs_info}")
 
-    # 소식 업로드와 동일한 방식으로 파일 업로드
+    # 파일 업로드
     _upload_file(page, 'input[type="file"]', img_path)
     page.wait_for_timeout(3000)
     _save_debug(page, "msg_after_upload")
