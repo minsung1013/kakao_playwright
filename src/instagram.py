@@ -2,11 +2,13 @@
 Instagram @evonikpc 스크래퍼 (Playwright)
 """
 import os
+import re
 import time
 import requests
-from playwright.sync_api import sync_playwright, Page, BrowserContext
+from playwright.sync_api import sync_playwright, Page
 
 from src.config import INSTA_STATE, IMAGES_DIR, DEBUG_DIR
+from src.openai_gen import translate_to_korean
 
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────
@@ -58,15 +60,20 @@ def _click_translate(page: Page) -> bool:
         return False
 
 
-def _wait_for_translation(page: Page, original: str, timeout: int = 20) -> str:
-    """번역 텍스트 안정화 대기"""
+def _is_korean(text: str) -> bool:
+    """한글 문자 포함 여부 확인"""
+    return bool(re.search(r"[가-힣]", text))
+
+
+def _wait_for_translation(page: Page, original: str, timeout: int = 15) -> str:
+    """번역 완료 대기 - 한글 문자가 나타날 때까지"""
     deadline = time.time() + timeout
     last = ""
     stable_since = None
 
     while time.time() < deadline:
         current = _get_caption(page).strip()
-        if current and current != original:
+        if current and current != original and _is_korean(current):
             if current != last:
                 last = current
                 stable_since = time.time()
@@ -158,11 +165,19 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], list[st
                     page.keyboard.press("Escape")
                     break
 
-                # 번역 클릭
+                # 번역 클릭 → 한글 확인 → 실패 시 OpenAI 번역
+                korean_text = english_text
                 if _click_translate(page):
-                    korean_text = _wait_for_translation(page, english_text, timeout=10)
+                    translated = _wait_for_translation(page, english_text)
+                    if _is_korean(translated):
+                        korean_text = translated
+                        print(f"   ✅ 인스타 번역 성공")
+                    else:
+                        print(f"   ⚠️ 인스타 번역 미완료 → OpenAI 번역 사용")
+                        korean_text = translate_to_korean(english_text)
                 else:
-                    korean_text = english_text
+                    print(f"   ⚠️ 번역 버튼 없음 → OpenAI 번역 사용")
+                    korean_text = translate_to_korean(english_text)
 
                 english_texts.append(english_text)
                 korean_texts.append(korean_text)

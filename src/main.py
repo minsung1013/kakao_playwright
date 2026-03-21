@@ -37,10 +37,6 @@ def main() -> None:
         print("📭 새 게시물 없음, 종료")
         return
 
-    # texts.json 업데이트
-    save_texts(loaded_texts + new_english)
-    print(f"✅ texts.json 업데이트 ({len(loaded_texts)} → {len(loaded_texts) + count}개)")
-
     # ── 2. OpenAI 콘텐츠 생성 ───────────────────────────────────
     print("\n🤖 OpenAI 콘텐츠 생성...")
     titles, messages = [], []
@@ -60,9 +56,17 @@ def main() -> None:
     # ── 3. Kakao 업로드 ─────────────────────────────────────────
     if DRY_RUN:
         print("\n[DRY RUN] Kakao 업로드 생략")
+        upload_ok = True
     else:
         print("\n📤 Kakao 업로드 시작...")
-        upload_all(titles, new_korean, messages, new_img_paths)
+        upload_ok = upload_all(titles, new_korean, messages, new_img_paths)
+
+    # texts.json은 업로드 성공 시에만 저장
+    if upload_ok:
+        save_texts(loaded_texts + new_english)
+        print(f"✅ texts.json 업데이트 ({len(loaded_texts)} → {len(loaded_texts) + count}개)")
+    else:
+        print("⚠️ 업로드 실패 항목이 있어 texts.json 업데이트 생략")
 
     # ── 4. 정리 및 이메일 ────────────────────────────────────────
     shutil.rmtree(IMAGES_DIR, ignore_errors=True)

@@ -148,7 +148,7 @@ def _clean_text(text: str) -> str:
 
 # ── 소식 업로드 ────────────────────────────────────────────────────
 
-def upload_post(page: Page, title: str, body: str, img_path: str) -> None:
+def upload_post(page: Page, title: str, body: str, img_path: str) -> bool:
     """소식(Posts) 임시저장"""
     page.goto(KAKAO_POST_URL, wait_until="domcontentloaded", timeout=30000)
     page.wait_for_timeout(5000)
@@ -218,14 +218,16 @@ def upload_post(page: Page, title: str, body: str, img_path: str) -> None:
         page.locator('button:has-text("등록")').first.click(timeout=10000)
         page.locator('button:has-text("확인")').first.click(timeout=10000)
         page.wait_for_timeout(2000)
+        return True
     except Exception as e:
         _save_debug(page, "post_save_failed")
         print(f"   ⚠️ 소식 임시저장 실패: {e}")
+        return False
 
 
 # ── 메시지 업로드 ──────────────────────────────────────────────────
 
-def upload_message(page: Page, message: str, img_path: str) -> None:
+def upload_message(page: Page, message: str, img_path: str) -> bool:
     """피드 메시지 임시저장"""
     page.goto(KAKAO_MSG_URL, wait_until="domcontentloaded")
     page.wait_for_timeout(5000)
@@ -310,9 +312,11 @@ def upload_message(page: Page, message: str, img_path: str) -> None:
         page.locator('button:has-text("임시저장")').first.click(timeout=10000)
         page.locator('button:has-text("확인")').first.click(timeout=10000)
         page.wait_for_timeout(2000)
+        return True
     except Exception as e:
         _save_debug(page, "msg_save_failed")
         print(f"   ⚠️ 메시지 임시저장 실패: {e}")
+        return False
 
 
 # ── 메인 함수 ──────────────────────────────────────────────────────
@@ -322,9 +326,10 @@ def upload_all(
     bodies: list[str],
     messages: list[str],
     img_paths: list[str],
-) -> None:
-    """소식 전체 + 메시지 전체 업로드"""
+) -> bool:
+    """소식 전체 + 메시지 전체 업로드. 모두 성공 시 True 반환."""
     count = len(titles)
+    all_success = True
 
     with sync_playwright() as p:
         browser, context = _make_context(p, headless=True)
@@ -339,8 +344,12 @@ def upload_all(
         for i in range(count):
             body = _clean_text(bodies[i])
             print(f"\n   소식 {i+1}/{count}: {titles[i][:40]}")
-            upload_post(page, titles[i], body, img_paths[i])
-            print(f"   ✅ 임시저장 완료")
+            ok = upload_post(page, titles[i], body, img_paths[i])
+            if ok:
+                print(f"   ✅ 임시저장 완료")
+            else:
+                print(f"   ❌ 소식 {i+1} 업로드 실패")
+                all_success = False
 
         # 메시지 업로드
         print(f"\n{'='*55}")
@@ -348,7 +357,13 @@ def upload_all(
         print(f"{'='*55}")
         for i in range(count):
             print(f"\n   메시지 {i+1}/{count}")
-            upload_message(page, messages[i], img_paths[i])
-            print(f"   ✅ 임시저장 완료")
+            ok = upload_message(page, messages[i], img_paths[i])
+            if ok:
+                print(f"   ✅ 임시저장 완료")
+            else:
+                print(f"   ❌ 메시지 {i+1} 업로드 실패")
+                all_success = False
 
         browser.close()
+
+    return all_success

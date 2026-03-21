@@ -38,6 +38,23 @@ def generate_title(english_text: str) -> str:
     return response.choices[0].message.content.strip()
 
 
+def translate_to_korean(english_text: str) -> str:
+    """영문 텍스트를 한국어로 번역"""
+    prompt = f"""아래 영문 텍스트를 자연스러운 한국어로 번역하세요.
+마케팅/화장품 분야 용어는 전문적으로 번역하고, 번역문만 출력하세요.
+
+원문:
+{english_text[:1000]}"""
+
+    response = get_client().chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1000,
+        temperature=0.3,
+    )
+    return response.choices[0].message.content.strip()
+
+
 def generate_message(english_text: str) -> str:
     """피드 메시지 생성 (이모티콘 2~3개, 200~400자, ~요 체)"""
     prompt = f"""당신은 화장품/퍼스널케어 마케팅 전문가입니다.
