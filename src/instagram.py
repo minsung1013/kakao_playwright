@@ -41,10 +41,21 @@ def _make_context(playwright, headless: bool = True) -> tuple:
 
 def _get_caption(page: Page) -> str:
     """게시물 캡션 텍스트 추출"""
-    try:
-        return page.locator("._a9zr").first.inner_text(timeout=5000)
-    except Exception:
-        return ""
+    selectors = [
+        "._a9zr",                                      # 구 클래스 (fallback)
+        "article h1",                                  # 일부 레이아웃
+        "article [data-testid='post-comment-root'] span",
+        "div[role='dialog'] ul li:first-child span",   # 모달 내 첫 번째 댓글(=캡션)
+        "div[role='dialog'] h1",
+    ]
+    for sel in selectors:
+        try:
+            text = page.locator(sel).first.inner_text(timeout=3000)
+            if text.strip():
+                return text.strip()
+        except Exception:
+            continue
+    return ""
 
 
 
@@ -109,8 +120,10 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], bool]:
         page.wait_for_timeout(2000)
 
         # 게시물 목록 (최대 MAX_POSTS개만 확인)
-        posts = page.locator("div._aagw").all()[:MAX_POSTS]
+        posts = page.locator("a[href*='/p/'], a[href*='/reel/']").all()[:MAX_POSTS]
         print(f"   게시물 확인: {len(posts)}개 (최대 {MAX_POSTS}개)")
+
+        img_urls: list[str | None] = []
 
         for i, post in enumerate(posts):
             try:
@@ -131,6 +144,15 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], bool]:
                     page.keyboard.press("Escape")
                     duplicate_found = True
                     break
+
+                # 모달에서 이미지 URL 수집
+                img_url = None
+                try:
+                    img_el = page.locator("article img[src*='cdninstagram'], article img[src*='fbcdn']").first
+                    img_url = img_el.get_attribute("src", timeout=3000)
+                except Exception:
+                    pass
+                img_urls.append(img_url)
 
                 english_texts.append(english_text)
 
@@ -154,11 +176,9 @@ def scrape_posts(loaded_texts: list[str]) -> tuple[list[str], list[str], bool]:
         # 이미지 다운로드
         if english_texts:
             print(f"\n   이미지 다운로드 중...")
-            img_elements = page.locator("div._aagv img").all()
-            for idx in range(min(len(english_texts), len(img_elements))):
-                img_url = img_elements[idx].get_attribute("src")
+            for idx, img_url in enumerate(img_urls):
                 img_path = os.path.join(IMAGES_DIR, f"post{idx}.jpg")
-                if _download_image(img_url, img_path):
+                if img_url and _download_image(img_url, img_path):
                     img_paths.append(img_path)
                     print(f"   ✅ 이미지 {idx+1}: {img_path}")
                 else:
